@@ -1,0 +1,5 @@
+# Extra packages for testing on your PC (not needed to run sessions).
+#   python -m pip install -r requirements-dev.txt
+-r control/requirements.txt
+# local S3-compatible server: tests/test_r2_emulated.py runs replay.py against it (no R2 account needed)
+moto[server]>=5.0

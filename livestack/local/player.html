@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HLS Test Player</title>
+<style>
+  :root { --bg:#f6f7f9; --fg:#1b1f24; --muted:#5b6470; --card:#fff; --line:#d8dde3; --accent:#2457d6; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#111418; --fg:#e8ebef; --muted:#9aa4af; --card:#1a1f25; --line:#2c333b; --accent:#7aa2ff; } }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:16px; background:var(--bg); color:var(--fg); font:15px/1.5 system-ui, sans-serif; }
+  main { max-width:960px; margin:0 auto; }
+  form { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; }
+  input { flex:1 1 300px; padding:8px 10px; border:1px solid var(--line); border-radius:6px; background:var(--card); color:var(--fg); }
+  button { padding:8px 14px; border:0; border-radius:6px; background:var(--accent); color:#fff; cursor:pointer; }
+  video { width:100%; background:#000; border-radius:8px; }
+  dl { display:grid; grid-template-columns:max-content 1fr; gap:4px 12px; background:var(--card); border:1px solid var(--line); border-radius:8px; padding:12px; }
+  dt { color:var(--muted); } dd { margin:0; font-variant-numeric:tabular-nums; }
+  #log { color:var(--muted); font-size:13px; white-space:pre-wrap; max-height:160px; overflow:auto; }
+</style>
+</head>
+<body>
+<main>
+  <h1>HLS test player</h1>
+  <form id="f"><input id="src" placeholder="https://live.example.com/hls/live/test/master.m3u8"><button>Play</button></form>
+  <video id="v" controls muted autoplay playsinline></video>
+  <dl>
+    <dt>Rendition</dt><dd id="lvl">-</dd>
+    <dt>Variants</dt><dd id="lvls">-</dd>
+    <dt>Live latency</dt><dd id="lat">-</dd>
+    <dt>Buffer</dt><dd id="buf">-</dd>
+    <dt>Bandwidth est.</dt><dd id="bw">-</dd>
+  </dl>
+  <div id="log"></div>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js"></script>
+<script>
+  const $ = id => document.getElementById(id), v = $('v');
+  const log = m => { $('log').textContent = new Date().toLocaleTimeString() + '  ' + m + '\n' + $('log').textContent; };
+  let hls;
+  function play(input) {
+    if (hls) hls.destroy();
+    try { history.replaceState(null, '', '?src=' + encodeURIComponent(input)); } catch (e) {}
+    // Relative links (/hls/live/test/master.m3u8) resolve against this page, so the
+    // same link works on localhost, on your Wi-Fi and through a tunnel.
+    let url;
+    try { url = new URL(input, location.href).href; } catch (e) { log('bad URL: ' + input); return; }
+    log('loading ' + url);
+    if (window.Hls && Hls.isSupported()) {
+      hls = new Hls({ liveSyncDurationCount: 3 });
+      hls.loadSource(url); hls.attachMedia(v);
+      hls.on(Hls.Events.MANIFEST_PARSED, (_, d) => { $('lvls').textContent = d.levels.map(l => l.height + 'p').join(', '); v.play().catch(()=>{}); });
+      hls.on(Hls.Events.LEVEL_SWITCHED, (_, d) => { const l = hls.levels[d.level]; $('lvl').textContent = l.height + 'p @ ' + Math.round(l.bitrate/1000) + ' kbps'; });
+      hls.on(Hls.Events.ERROR, (_, d) => {
+        log((d.fatal ? 'FATAL ' : '') + d.type + ': ' + d.details);
+        if (d.fatal && d.type === Hls.ErrorTypes.NETWORK_ERROR) setTimeout(() => hls.startLoad(), 2000);
+        else if (d.fatal && d.type === Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();
+      });
+    } else { v.src = url; }  // Safari plays HLS natively
+  }
+  setInterval(() => {
+    if (!hls) return;
+    $('lat').textContent = hls.latency ? hls.latency.toFixed(1) + ' s' : '-';
+    const b = v.buffered.length ? v.buffered.end(v.buffered.length - 1) - v.currentTime : 0;
+    $('buf').textContent = b.toFixed(1) + ' s';
+    $('bw').textContent = Math.round(hls.bandwidthEstimate / 1000) + ' kbps';
+  }, 1000);
+  $('f').onsubmit = e => { e.preventDefault(); play($('src').value.trim()); };
+  const q = new URLSearchParams(location.search).get('src');
+  if (q) { $('src').value = q; play(q); }
+</script>
+</body>
+</html>

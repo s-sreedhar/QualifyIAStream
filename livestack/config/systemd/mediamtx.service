@@ -1,0 +1,27 @@
+[Unit]
+Description=MediaMTX media server (livestack)
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+User=livestack
+Group=livestack
+ExecStart=/usr/local/bin/mediamtx /etc/livestack/mediamtx.yml
+Restart=always
+RestartSec=2
+# Inherited by the FFmpeg ladder (runOnReady).
+Environment=HLS_ROOT=/var/www/hls
+Environment=RUN_DIR=/run/livestack
+RuntimeDirectory=livestack
+RuntimeDirectoryPreserve=yes
+LimitNOFILE=65536
+# Hardening
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/www/hls /var/lib/livestack /run/livestack
+
+[Install]
+WantedBy=multi-user.target

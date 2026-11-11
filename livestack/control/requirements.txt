@@ -1,0 +1,4 @@
+# Only replay.py needs third-party packages; livestack.py and probe.py are stdlib-only.
+boto3>=1.34,<2
+# tests
+pytest>=8

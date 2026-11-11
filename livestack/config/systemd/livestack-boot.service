@@ -1,0 +1,17 @@
+# Re-applies the session config after an unexpected reboot mid-session.
+# On a freshly restored snapshot /etc/livestack/env does not exist yet, so this
+# is skipped; start_session pushes the env file and runs boot.sh itself.
+[Unit]
+Description=livestack boot (render config, TLS, firewall, start services)
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/etc/livestack/env
+
+[Service]
+Type=oneshot
+ExecStart=/opt/livestack/server/boot.sh --no-healthcheck
+RemainAfterExit=yes
+TimeoutStartSec=600
+
+[Install]
+WantedBy=multi-user.target

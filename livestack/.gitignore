@@ -1,0 +1,64 @@
+# livestack .gitignore
+# Rule of thumb: code, config templates and docs go in git.
+# Secrets, runtime state, media and generated output never do.
+
+# ---------------------------------------------------------------- secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+id_rsa*
+id_ed25519*
+*_ed25519
+*_ed25519.pub
+# cloudflared / tunnel credentials and rclone configs
+.cloudflared/
+*.cloudflared.json
+cert.json
+rclone.conf
+
+# ---------------------------------------------------------------- runtime state
+# session.json, history, replay manifests, known_hosts, boot_times.csv
+state/
+recordings/
+*.log
+
+# ---------------------------------------------------------------- local test output
+local/.work/
+local/.live/
+
+# ---------------------------------------------------------------- media (large, never in git)
+*.mp4
+*.mkv
+*.mov
+*.flv
+*.ts
+*.m4s
+*.m3u8
+*.part.mp4
+
+# ---------------------------------------------------------------- tools / binaries
+# Download these instead (docs/LOCAL_TESTING.md); keep them in E:\Freelancing\QualifyIAStream\tools
+*.exe
+*.zip
+
+# ---------------------------------------------------------------- python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+.coverage
+htmlcov/
+
+# ---------------------------------------------------------------- editors / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini

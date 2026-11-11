@@ -1,0 +1,97 @@
+# MediaMTX configuration for the livestack origin (tested with MediaMTX v1.21.2).
+#
+# This is a TEMPLATE. server/boot.sh renders it to /etc/livestack/mediamtx.yml,
+# replacing ${PUBLISH_USER} and ${PUBLISH_PASS} from /etc/livestack/env.
+# Never put real credentials in this file - it lives in git.
+#
+# Ports
+#   1935  RTMP ingest (public, firewalled to STREAMER_IPS, publish needs credentials)
+#   8554  RTSP  - localhost only, used by the FFmpeg ladder to read the stream
+#   8888  HLS   - localhost only, single-rendition debug output (hlsAlwaysRemux)
+#   9997  API   - localhost only, used by monitor.sh / healthcheck.sh
+#   9998  Prometheus metrics - localhost only
+
+logLevel: info
+logDestinations: [stdout]
+
+readTimeout: 10s
+writeTimeout: 10s
+writeQueueSize: 512
+
+###############################################################################
+# Authentication
+# OBS publishes with credentials in the stream key:
+#   Server:     rtmp://ingest.example.com/live
+#   Stream key: <name>?user=<PUBLISH_USER>&pass=<PUBLISH_PASS>
+authMethod: internal
+authInternalUsers:
+  # Local processes (FFmpeg ladder, health check, monitor) need no credentials.
+  - user: any
+    pass:
+    ips: ['127.0.0.1/32', '::1/128']
+    permissions:
+      - action: publish
+      - action: read
+      - action: playback
+      - action: api
+      - action: metrics
+  # The streamer (OBS / camera). Publish only - cannot read or use the API.
+  - user: '${PUBLISH_USER}'
+    pass: '${PUBLISH_PASS}'
+    ips: []
+    permissions:
+      - action: publish
+
+###############################################################################
+# Control / observability (bound to localhost only)
+api: yes
+apiAddress: 127.0.0.1:9997
+metrics: yes
+metricsAddress: 127.0.0.1:9998
+
+###############################################################################
+# Protocols
+rtmp: yes
+rtmpAddress: :1935
+
+rtsp: yes
+rtspTransports: [tcp]
+rtspAddress: 127.0.0.1:8554
+
+hls: yes
+hlsAddress: 127.0.0.1:8888
+hlsAlwaysRemux: yes
+
+webrtc: no
+srt: no
+moq: no
+
+###############################################################################
+# Paths
+pathDefaults:
+  # Safety-net recording of the ORIGINAL incoming stream on the server disk.
+  # The primary replay is the camera/OBS local file; this is only used if that
+  # is lost (see `livestack.py fetch-recordings`). Disabled by RECORD_BACKUP=no.
+  record: yes
+  recordPath: /var/lib/livestack/recordings/%path/%Y-%m-%d_%H-%M-%S-%f
+  recordFormat: fmp4
+  recordPartDuration: 1s
+  recordSegmentDuration: 1h
+  recordDeleteAfter: 7d
+
+paths:
+  # NOTE: MediaMTX v1.21 renamed runOnReady/runOnReadyRestart (the names in the
+  # original spec) to runOnAvailable/runOnAvailableRestart. Same behaviour.
+
+  # Used by server/healthcheck.sh: a test pattern goes through the full ladder.
+  healthcheck/probe:
+    record: no
+    runOnAvailable: /opt/livestack/server/ladder.sh
+    runOnAvailableRestart: yes
+
+  # Every real stream (e.g. live/test) gets the 720p/480p/360p ladder.
+  # MediaMTX sets MTX_PATH for the command and restarts it if it exits while
+  # the stream is still live (runOnAvailableRestart).
+  all_others:
+    runOnAvailable: /opt/livestack/server/ladder.sh
+    runOnAvailableRestart: yes

@@ -1,0 +1,12 @@
+[Unit]
+Description=livestack watchdog (stale ladder, encoder speed, disk, NTP, services)
+After=mediamtx.service nginx.service
+StartLimitIntervalSec=0
+
+[Service]
+ExecStart=/opt/livestack/server/monitor.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
