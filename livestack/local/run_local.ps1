@@ -127,7 +127,9 @@ try {
     $procs.Add($cf)
     $found = Wait-For {
       $t = Get-Content "$logs\tunnel.err.log", "$logs\tunnel.log" -Raw -ErrorAction SilentlyContinue
-      $m = [regex]::Match(($t -join "`n"), 'https://[a-z0-9-]+\.trycloudflare\.com')
+      # cloudflared logs its control API URL (api.trycloudflare.com) on failure;
+      # do not mistake that fixed endpoint for the public tunnel hostname.
+      $m = [regex]::Match(($t -join "`n"), 'https://(?!api\.trycloudflare\.com)[a-z0-9-]+\.trycloudflare\.com')
       if ($m.Success) { $script:public = $m.Value; $true } else { $false }
     } 45
     if (-not $found) { Get-Content "$logs\tunnel.err.log" -Tail 15; throw "tunnel did not come up - see $logs\tunnel.err.log" }

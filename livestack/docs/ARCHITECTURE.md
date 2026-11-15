@@ -5,13 +5,13 @@
 | Part | Where | Job |
 |---|---|---|
 | **OBS / camera** | streamer | Encodes video once and **pushes** it over RTMP to `rtmp://ingest.example.com/live`, key `<name>?user=…&pass=…`. Also records locally; that recording becomes the replay. |
-| **MediaMTX** | VPS | Media router. Accepts RTMP (with credentials), then republishes the stream locally over RTSP. Starts the ladder when a stream goes live (`runOnAvailable`) and restarts it if it exits. Writes a backup recording. |
+| **MediaMTX** | VPS | Media router. Accepts RTMP (with credentials), then republishes the stream locally over RTSP. Starts the ladder when a stream goes live (`runOnAvailable`) and restarts it if it exits. Server-side backup recording is disabled for the OBS-local-recording + LMS-upload workflow. |
 | **FFmpeg ladder** (`server/ladder.sh`) | VPS | Reads the stream once and makes three renditions: 720p at 2.8 Mbps, 480p at 1.4 Mbps and 360p at 0.8 Mbps, with AAC 96k audio. Writes 4-second HLS segments plus `master.m3u8`. This is the CPU-heavy part: three x264 encodes. |
 | **HLS** | – | Each rendition is a playlist (`index.m3u8`) of small `.ts` files. `master.m3u8` lists the renditions so players can switch by bandwidth (ABR). Plain HTTP files, which is why a CDN can cache them. |
 | **nginx** | VPS | Read-only HTTPS origin for `/var/www/hls`. Sets correct MIME types. Playlists are `no-cache`; segments are `max-age=60`. |
 | **BlazingCDN** | CDN | Pulls from `origin.example.com` and serves ~100 viewers. The VPS serves each file about once instead of 100 times. |
-| **Cloudflare R2** | storage | `lms-replays` holds one MP4 per session for the LMS. `livestack-state` holds the TLS certificate backup. |
-| **Control tools** | your PC | `livestack.py` (server lifecycle through the Vultr API), `replay.py` (R2), `probe.py` (viewer-side monitoring). |
+| **Cloudflare R2** | storage | LMS recordings are uploaded separately through the admin dashboard. `livestack-state` holds the TLS certificate backup. |
+| **Control tools** | your PC | Current server lifecycle adapter uses the Vultr API; another VPS provider needs a provider adapter. `probe.py` monitors viewer playback. |
 
 ## 2. Hostnames
 
@@ -85,9 +85,9 @@ Each step is saved to `state/session.json`. Running `start` again resumes from w
 | Let's Encrypt via certbot | Plus R2 backup/restore and fallbacks | Rebuilding 5×/week would hit LE's duplicate-certificate limit. |
 | Firewall only | Firewall plus publish credentials | Home IPs change; credentials keep ingest safe if you must use `any`. |
 | HLS flags `independent_segments` | Also `delete_segments`, `temp_file`, `program_date_time`, epoch numbering, `fps=30`, forced keyframes every 4 s | Bounded disk use, no half-written segments, smooth restarts, exact 4 s segments whatever the source fps. |
-| – | Server-side backup recording | Insurance if the camera/OBS recording is lost. |
+| Server-side backup recording | Disabled by default | OBS local recording is uploaded through the LMS separately. |
 
-## 7. Costs (100 viewers, 2 h × 5 days/week)
+## 7. Costs (existing Vultr + CDN estimate; re-price for the selected provider)
 
 | Item | Monthly |
 |---|---|

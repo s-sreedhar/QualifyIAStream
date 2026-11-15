@@ -1,0 +1,12 @@
+# Image for the on-demand livestream job (Cloud Run).
+# Build context is this folder; .dockerignore keeps .env, state/ and recordings OUT of the image.
+FROM python:3.12-slim
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends openssh-client ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY control/requirements-cms.txt control/requirements-cms.txt
+RUN pip install --no-cache-dir -r control/requirements-cms.txt
+COPY control/ control/
+ENV PYTHONUNBUFFERED=1
+CMD ["python", "control/job.py"]

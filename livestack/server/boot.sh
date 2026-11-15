@@ -77,7 +77,7 @@ install -d -m 755 /etc/livestack "$TLS_DIR" /var/www/acme
 tmp=$(mktemp)
 PUBLISH_USER=$PUBLISH_USER PUBLISH_PASS=$PUBLISH_PASS \
   envsubst '${PUBLISH_USER} ${PUBLISH_PASS}' < "$LIVESTACK_HOME/config/mediamtx.yml.tmpl" > "$tmp"
-if [ "${RECORD_BACKUP:-yes}" != "yes" ]; then
+if [ "${RECORD_BACKUP:-no}" != "yes" ]; then
   sed -i 's/^\(\s*record:\) yes/\1 no/' "$tmp"
   log "server-side backup recording disabled (RECORD_BACKUP=${RECORD_BACKUP})"
 fi

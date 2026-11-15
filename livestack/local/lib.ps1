@@ -59,8 +59,14 @@ function Get-PortOwner([int]$Port) {
 
 # FFmpeg ladder processes reading from our RTSP port (optionally one stream path).
 function Get-LadderProcs([int]$RtspPort, [string]$Path = '') {
-  @(Get-CimInstance Win32_Process -Filter "Name='ffmpeg.exe'" |
-    Where-Object { $_.CommandLine -match [regex]::Escape("127.0.0.1:$RtspPort/$Path") })
+  try {
+    @(Get-CimInstance Win32_Process -Filter "Name='ffmpeg.exe'" -ErrorAction Stop |
+      Where-Object { $_.CommandLine -match [regex]::Escape("127.0.0.1:$RtspPort/$Path") })
+  } catch {
+    # Some managed Windows accounts cannot query Win32_Process command lines.
+    # Callers can report that the restart check was skipped; never fail cleanup.
+    @()
+  }
 }
 
 # On Windows, children of MediaMTX (bash -> ffmpeg) are not killed with it.
@@ -69,9 +75,10 @@ function Get-LadderProcs([int]$RtspPort, [string]$Path = '') {
 function Stop-LadderProcs([int]$RtspPort) {
   Get-LadderProcs $RtspPort | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
   Start-Sleep -Milliseconds 300
-  Get-CimInstance Win32_Process -Filter "Name='bash.exe'" |
+  try { Get-CimInstance Win32_Process -Filter "Name='bash.exe'" -ErrorAction Stop |
     Where-Object { $_.CommandLine -match 'ladder\.sh' -and -not (Get-Process -Id $_.ParentProcessId -ErrorAction SilentlyContinue) } |
     ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+  } catch { }
 }
 
 # Last reported encoder speed (e.g. 1.03) from the ladder's -progress file, or $null.

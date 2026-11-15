@@ -62,3 +62,5 @@ htmlcov/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+.pytest_tmp/

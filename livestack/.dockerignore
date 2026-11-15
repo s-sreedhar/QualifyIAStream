@@ -1,0 +1,5 @@
+# Allow-list: only the control code goes into the image (never .env, keys, state or recordings).
+*
+!control/*.py
+!control/requirements-cms.txt
+control/service.py

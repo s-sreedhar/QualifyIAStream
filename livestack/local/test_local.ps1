@@ -113,7 +113,10 @@ try {
   Result 'encoder_speed' $sOk $(if ($speed) { "speed=${speed}x (needs >= 1.0x sustained; >=0.95 tolerated for a live source)" } else { 'no progress file' })
 
   # ---------------------------------------------------------------- resilience: kill the encoder
-  $before = @(Ladder-Procs 'live/localtest')
+  $processInspection = $true
+  try { Get-CimInstance Win32_Process -Filter "Name='ffmpeg.exe'" -ErrorAction Stop | Out-Null }
+  catch { $processInspection = $false }
+  $before = if ($processInspection) { @(Ladder-Procs 'live/localtest') } else { @() }
   if ($before.Count -ge 1) {
     $oldPid = $before[0].ProcessId
     Stop-Process -Id $oldPid -Force
@@ -124,8 +127,10 @@ try {
       ($now.Count -ge 1) -and ($now[0].ProcessId -ne $oldPid) -and $fresh
     } 30
     Result 'ladder_auto_restart' $restarted $(if ($restarted) { "killed pid $oldPid; MediaMTX restarted the ladder and the playlist advanced in $([int]((Get-Date) - $killedAt).TotalSeconds)s" } else { 'ladder not restarted within 30s' })
+  } elseif (-not $processInspection) {
+    $results.Add([pscustomobject]@{ Check = 'ladder_auto_restart'; Result = 'SKIP'; Detail = 'Windows denied Win32_Process inspection; restart behavior was not measured' })
+    Write-Host '[SKIP] ladder_auto_restart: Windows denied Win32_Process inspection' -ForegroundColor Yellow
   } else {
-    Get-CimInstance Win32_Process -Filter "Name='ffmpeg.exe'" | ForEach-Object { Write-Host "  ffmpeg: $($_.CommandLine)" }
     Result 'ladder_auto_restart' $false 'ladder ffmpeg process not found'
   }
 

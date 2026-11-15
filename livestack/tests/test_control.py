@@ -6,6 +6,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 import pytest
 
 import livestack
+import cms_bridge
 from common import TransientError, parse_env_text
 from livestack import Vultr, VultrError, server_env_text
 from replay import default_key, safe_session
@@ -21,6 +22,37 @@ C='x=y'
 EMPTY=
 """)
     assert env == {"A": "1", "B": "two words", "C": "x=y", "EMPTY": ""}
+
+
+def test_stream_for_normalizes_bare_and_legacy_prefixed_names():
+    assert cms_bridge.stream_for(None, {"stream_name": "session-123"}) == ("live/session-123", "session-123")
+    assert cms_bridge.stream_for(None, {"stream_name": "live/session-123"}) == ("live/session-123", "session-123")
+
+
+def test_end_without_server_backup_destroys_instance_and_skips_export(monkeypatch):
+    class Store:
+        def __init__(self):
+            self.row = {"instance_id": "instance-1", "main_ip": "203.0.113.5", "replay_status": "none", "session_code": "test", "class_id": None}
+            self.updates = []
+            self.events = []
+        def get(self, sid): return self.row
+        def update(self, sid, **values): self.updates.append(values)
+        def event(self, *args): self.events.append(args)
+
+    store = Store()
+    monkeypatch.setenv("RECORD_BACKUP", "no")
+    class Provider:
+        def get_instance(self, instance_id): return {"id": instance_id, "label": "test"}
+    monkeypatch.setattr(cms_bridge, "vultr", lambda: Provider())
+    destroyed = []
+    monkeypatch.setattr(livestack, "destroy_instance", lambda provider, inst: destroyed.append(inst["id"]))
+    monkeypatch.setattr(cms_bridge, "export_replay", lambda *args: pytest.fail("must not export server replay"))
+
+    assert cms_bridge.run_end(store, "session-1", mode="save") == 0
+    assert destroyed == ["instance-1"]
+    assert any(u.get("replay_status") == "skipped" for u in store.updates)
+    assert any(u.get("status") == "ended" for u in store.updates)
+    assert any("upload the OBS recording separately" in event[3] for event in store.events)
 
 
 def test_server_env_never_contains_control_secrets(monkeypatch):
