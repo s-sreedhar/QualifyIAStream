@@ -35,7 +35,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 # name, height, video kbps, audio kbps (same ladder as the website's other recordings)
-LADDER = [("720p", 720, 2800, 128), ("480p", 480, 1400, 96), ("360p", 360, 800, 96)]   # 720p is the top quality (a 1080p file is scaled down)
+LADDER = [("1080p", 1080, 5000, 128), ("720p", 720, 2800, 128), ("480p", 480, 1400, 96), ("360p", 360, 800, 96)]   # 1080p only when the file is 1080p or larger
 SEGMENT_SECONDS = 4
 UA = "Mozilla/5.0 (compatible; QualifyIAS-Uploader/1.0)"
 API = "/api/v1/cms-video"
