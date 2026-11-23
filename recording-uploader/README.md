@@ -1,6 +1,6 @@
 # Recording uploader (move to any computer)
 
-Encodes a lecture video on THIS computer (1080/720/480/360p adaptive HLS + poster) and publishes it to the recordings bucket.
+Encodes a lecture video on THIS computer (720/480/360p adaptive HLS + poster) and publishes it to the recordings bucket.
 The computer needs **no passwords and no storage keys**. The only credential is the **upload link** made in the admin.
 
 ## Install everything (one time)

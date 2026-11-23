@@ -35,7 +35,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 # name, height, video kbps, audio kbps (same ladder as the website's other recordings)
-LADDER = [("1080p", 1080, 5000, 192), ("720p", 720, 2800, 128), ("480p", 480, 1400, 96), ("360p", 360, 800, 96)]
+LADDER = [("720p", 720, 2800, 128), ("480p", 480, 1400, 96), ("360p", 360, 800, 96)]   # 720p is the top quality (a 1080p file is scaled down)
 SEGMENT_SECONDS = 4
 UA = "Mozilla/5.0 (compatible; QualifyIAS-Uploader/1.0)"
 API = "/api/v1/cms-video"
@@ -82,7 +82,7 @@ def probe(path: Path) -> dict:
 
 
 def ladder_for(height: int):
-    chosen = [r for r in LADDER if r[1] <= height + 8]
+    chosen = [r for r in LADDER if r[1] <= height + 8]   # never enlarge: a 480p file gets 480p and 360p
     return chosen or [("source", max(2, height - height % 2), 600, 64)]
 
 
