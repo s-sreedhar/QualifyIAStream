@@ -25,6 +25,12 @@ Check: `python upload_recording.py --check`
 3. When it says DONE the recording is READY under LMS > Recordings; attach it to a class/lesson as usual.
 
 If it stops (internet, power), run the same command again: encoded qualities and uploaded files are reused.
+How it protects you:
+- Every uploaded file is written to a progress log (`work/<video>/uploaded-<recording>.log`) the moment it arrives. A re-run skips what is already there.
+- Internet outages are retried for up to 30 minutes by themselves; expired storage links are refreshed automatically.
+- An encoded quality is reused only if it finished and every segment is on disk; a half-finished one is encoded again from its start (encoding is not resumable inside one quality).
+- The same file is never uploaded twice by accident: after a successful upload the script remembers it (`completed.json`) and refuses to repeat it unless you add `--force`.
+- One upload link = one recording. A second run with the same link updates the SAME recording (no duplicate). A new link makes a new recording.
 A link older than 72 hours: make a new one; the work already done is still reused.
 
 ## Small files / quick option
