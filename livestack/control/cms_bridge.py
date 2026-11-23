@@ -1,4 +1,4 @@
-"""CMS bridge: runs the livestack lifecycle for a `live_sessions` row (Supabase) so the
+"""CMS bridge: runs the livestack lifecycle for a `live_sessions` row (Postgres) so the
 whole thing can be driven from the Directus CMS.
 
 It does not change or replace livestack.py. It calls the same functions (create the

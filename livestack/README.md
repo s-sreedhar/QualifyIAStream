@@ -1,5 +1,8 @@
 # livestack: low-cost live + replay streaming
 
+> **LEGACY (2026-11-15).** Production live classes now run on an on-demand Linode VM started from the admin
+> (`backend/src/services/linode-live.ts`). See `../../ARCHITECTURE.md` section 7. This Vultr/BlazingCDN system is kept for reference only.
+
 OBS → **MediaMTX + FFmpeg ABR ladder** on a per-session Vultr VPS → **BlazingCDN** → viewers (HLS).
 The replay is uploaded once per session as an MP4 to **Cloudflare R2**.
 Target: ~100 viewers, 2 h/day, 5 days/week, about **$30–35/month**.
