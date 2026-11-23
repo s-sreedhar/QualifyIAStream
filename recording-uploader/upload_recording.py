@@ -129,7 +129,7 @@ class Api:
         except SystemExit:
             raise
 
-    def call(self, path: str, body: dict | None = None, method: str | None = None):
+    def call(self, path: str, body: dict | None = None, method: str | None = None, soft: bool = False):
         if path != "/hls/renew" and time.time() - self.renewed > 3000:
             self.renew()
         data = json.dumps(body).encode() if body is not None else None
@@ -142,6 +142,8 @@ class Api:
                 with urllib.request.urlopen(req, timeout=60) as r:
                     return json.load(r)
             except urllib.error.HTTPError as e:
+                if soft and e.code in (401, 403, 404):
+                    return None
                 if e.code in (401, 403):
                     die("The upload link is not valid any more (it lasts 72 hours). Make a new one in the admin: LMS > Recordings > Upload recording.")
                 if e.code < 500:
@@ -153,14 +155,27 @@ class Api:
 
 
 def parse_link(text: str) -> tuple[str, str]:
-    text = text.strip().strip('"').strip("'")
-    if text.startswith("http"):
-        u = urllib.parse.urlparse(text)
-        token = urllib.parse.parse_qs(u.query).get("t", [""])[0]
-        if not token:
-            die("That address has no upload code (?t=...). Copy the full address of the 'Upload recording' page.")
-        return f"{u.scheme}://{u.netloc}", token
-    die("Paste the full address of the 'Upload recording' page (it starts with https://).")
+    """Accepts the address as copied from the browser, or the whole sentence/markdown that contains it."""
+    found = re.search(r"https?://[^\s)\]\"'<>]+", text or "")
+    if not found:
+        die("Paste the full address of the 'Upload recording' page (it starts with https://).")
+    u = urllib.parse.urlparse(found.group(0))
+    token = urllib.parse.parse_qs(u.query).get("t", [""])[0]
+    if not token:
+        die("That address has no upload code (?t=...). Copy the full address of the 'Upload recording' page.")
+    return f"{u.scheme}://{u.netloc}", token
+
+
+def check_server(api: "Api"):
+    """Fail early, with a clear reason, when the link or the server is not ready (before hours of encoding)."""
+    status = api.call("/status", soft=True)
+    if status is None:
+        die("The upload link is not valid. Make a new one in the admin: LMS > Recordings > Upload recording.")
+    if not status.get("ok"):
+        die(f"The upload link does not work: {status.get('message')}")
+    if api.call("/hls/renew", {}, soft=True) is None:
+        die("The server does not have the multi-quality upload feature yet. The BACKEND must be redeployed in Dokploy "
+            "(it was updated on GitHub on 2026-11-23). Then run this again.")
 
 
 def put_file(url: str, headers: dict, path: Path):
@@ -196,8 +211,8 @@ def main():
         log("ffmpeg and ffprobe are installed.")
         if args.link:
             base, token = parse_link(args.link)
-            res = Api(base, token).call("/status")
-            log("Upload link is valid." if res.get("ok") else f"Upload link problem: {res.get('message')}")
+            check_server(Api(base, token))
+            log("Upload link is valid and the server is ready for uploads.")
         return
 
     raw = args.video or input("Drag the video file here, then press Enter: ")
@@ -223,9 +238,7 @@ def main():
     link = args.link or input("\nPaste the UPLOAD LINK from the admin (LMS > Recordings > Upload recording), then press Enter:\n> ")
     base, token = parse_link(link)
     api = Api(base, token)
-    status = api.call("/status")
-    if not status.get("ok"):
-        die(f"The upload link does not work: {status.get('message')}")
+    check_server(api)
     api.call("/hls/progress", {"progress": 0, "title": title})
 
     state_file = work / "uploaded.json"
