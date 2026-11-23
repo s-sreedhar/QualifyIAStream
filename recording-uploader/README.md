@@ -18,14 +18,14 @@ Also needed: free disk space of about 1.5x the video size, a power adapter with 
 Check: `python upload_recording.py --check`
 
 ## Every upload
-1. Admin > LMS > Recordings > **Upload recording**. A page opens: copy its full address (contains `?t=...`). Valid 24 hours, one recording only.
+1. Admin > LMS > Recordings > **Upload recording**. A page opens: copy its full address (contains `?t=...`). Valid 72 hours (the script renews it itself while running), one recording only.
 2. Run:
    `python upload_recording.py "D:/Videos/Lecture 1.mp4" --title "Polity Lecture 1"`
    (or just `python upload_recording.py` and drag the file in). Add `--link "<address>"` or paste it when asked.
 3. When it says DONE the recording is READY under LMS > Recordings; attach it to a class/lesson as usual.
 
 If it stops (internet, power), run the same command again: encoded qualities and uploaded files are reused.
-A link older than 24 hours: make a new one; the work already done is still reused.
+A link older than 72 hours: make a new one; the work already done is still reused.
 
 ## Small files / quick option
 The admin "Upload recording" page itself uploads one MP4 (single quality). Use this script when you want all qualities.

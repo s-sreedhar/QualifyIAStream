@@ -11,7 +11,7 @@ What it does
   3. Uploads every file straight to the recordings bucket with short-lived signed links from the backend, then registers the
      recording so it appears in the admin as READY.
 
-This computer needs NO passwords or storage keys. The upload link is the only credential: it is valid for 24 hours and works for
+This computer needs NO passwords or storage keys. The upload link is the only credential: it is valid for 72 hours and renews itself while the script runs and works for
 that one recording only. Only Python 3.9+ and ffmpeg are required (no pip packages).
 If anything stops half way, run the SAME command again: finished work is reused.
 """
@@ -117,8 +117,21 @@ def encode_rendition(src: Path, out_dir: Path, info: dict, height: int, vk: int,
 class Api:
     def __init__(self, base: str, token: str):
         self.base, self.token = base.rstrip("/"), token
+        self.renewed = time.time()
+
+    def renew(self):
+        """Swap the link's code for a fresh 72-hour one (called hourly), so the link never runs out during a long job."""
+        self.renewed = time.time()
+        try:
+            res = self.call("/hls/renew", {})
+            if res.get("ok") and res.get("token"):
+                self.token = res["token"]
+        except SystemExit:
+            raise
 
     def call(self, path: str, body: dict | None = None, method: str | None = None):
+        if path != "/hls/renew" and time.time() - self.renewed > 3000:
+            self.renew()
         data = json.dumps(body).encode() if body is not None else None
         headers = {"User-Agent": UA, "x-upload-token": self.token}
         if data is not None:
@@ -130,7 +143,7 @@ class Api:
                     return json.load(r)
             except urllib.error.HTTPError as e:
                 if e.code in (401, 403):
-                    die("The upload link is not valid any more (it lasts 24 hours). Make a new one in the admin: LMS > Recordings > Upload recording.")
+                    die("The upload link is not valid any more (it lasts 72 hours). Make a new one in the admin: LMS > Recordings > Upload recording.")
                 if e.code < 500:
                     die(f"The server refused the request ({e.code}).")
             except (urllib.error.URLError, TimeoutError, ConnectionError):
