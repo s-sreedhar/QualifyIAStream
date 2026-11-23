@@ -11,7 +11,7 @@ It installs Python 3 and ffmpeg with winget, adds ffmpeg to PATH permanently, an
 **Mac / Linux:** `bash setup-mac-linux.sh`
 
 Manual alternative: Python 3.9+ (python.org), ffmpeg + ffprobe (Windows `winget install Gyan.FFmpeg`, Mac `brew install ffmpeg`, Linux `sudo apt install ffmpeg`). No pip packages are needed.
-If ffmpeg is installed but not on PATH, set `FFMPEG_DIR` to its `bin` folder, or put it in `recording-uploaderfmpegin`.
+If ffmpeg is installed but not on PATH, set `FFMPEG_DIR` to its `bin` folder, or put it in `recording-uploader/ffmpeg/bin`.
 
 Also needed: free disk space of about 1.5x the video size, a power adapter with sleep turned off, and this folder (nothing secret inside).
 
