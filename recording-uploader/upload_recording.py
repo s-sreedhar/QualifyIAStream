@@ -7,7 +7,7 @@
 
 What it does
   1. Encodes 1080p / 720p / 480p / 360p adaptive HLS (only the sizes the video really has) and a poster picture, with ffmpeg.
-  2. Asks for the UPLOAD LINK (made in the admin: LMS > Recordings > "Upload recording"; copy the address of the page that opens).
+  2. Asks for the UPLOAD LINK (made in the admin: LMS > Recordings > "Get local upload link"; press Copy).
   3. Uploads every file straight to the recordings bucket with short-lived signed links from the backend, then registers the
      recording so it appears in the admin as READY.
 
@@ -190,7 +190,7 @@ class Api:
                 if soft and e.code in (401, 403, 404):
                     return None
                 if e.code in (401, 403):
-                    die("The upload link is not valid any more (it lasts 72 hours). Make a new one in the admin: LMS > Recordings > Upload recording.")
+                    die("The upload link is not valid any more (it lasts 72 hours). Make a new one in the admin: LMS > Recordings > Get local upload link.")
                 if e.code < 500 and e.code != 429:
                     die(f"The server refused the request ({e.code}).")
             except (*NET_ERRORS, json.JSONDecodeError):
@@ -208,11 +208,11 @@ def parse_link(text: str) -> tuple[str, str]:
     """Accepts the address as copied from the browser, or the whole sentence/markdown that contains it."""
     found = re.search(r"https?://[^\s)\]\"'<>]+", text or "")
     if not found:
-        die("Paste the full address of the 'Upload recording' page (it starts with https://).")
+        die("Paste the link from Admin > LMS > Recordings > 'Get local upload link' (it starts with https://).")
     u = urllib.parse.urlparse(found.group(0))
     token = urllib.parse.parse_qs(u.query).get("t", [""])[0]
     if not token:
-        die("That address has no upload code (?t=...). Copy the full address of the 'Upload recording' page.")
+        die("That address has no upload code (?t=...). Use the Copy button in Admin > LMS > Recordings > 'Get local upload link'.")
     return f"{u.scheme}://{u.netloc}", token
 
 
@@ -220,7 +220,7 @@ def check_server(api: "Api"):
     """Fail early, with a clear reason, when the link or the server is not ready (before hours of encoding)."""
     status = api.call("/status", soft=True)
     if status is None:
-        die("The upload link is not valid. Make a new one in the admin: LMS > Recordings > Upload recording.")
+        die("The upload link is not valid. Make a new one in the admin: LMS > Recordings > Get local upload link.")
     if not status.get("ok"):
         die(f"The upload link does not work: {status.get('message')}")
     if api.call("/hls/renew", {}, soft=True) is None:
@@ -311,7 +311,7 @@ def main():
         log("WARNING: little free disk space; the encoded copies need roughly the size of the original.")
 
     # ---- the upload link comes FIRST so each quality can upload while the next one is still encoding (saves the upload time)
-    link = args.link or input("\nPaste the UPLOAD LINK from the admin (LMS > Recordings > Upload recording), then press Enter:\n> ")
+    link = args.link or input("\nPaste the UPLOAD LINK from the admin (LMS > Recordings > Get local upload link), then press Enter:\n> ")
     base, token = parse_link(link)
     api = Api(base, token)
     check_server(api)

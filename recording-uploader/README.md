@@ -18,7 +18,7 @@ Also needed: free disk space of about 1.5x the video size, a power adapter with 
 Check: `python upload_recording.py --check`
 
 ## Every upload
-1. Admin > LMS > Recordings > **Upload recording**. A page opens: copy its full address (contains `?t=...`). Valid 72 hours (the script renews it itself while running), one recording only.
+1. Admin > LMS > Recordings > **Get local upload link**. Type the title, press **Make link**, then **Copy** (nothing is uploaded in the browser). Valid 72 hours (the script renews it itself while running), one recording only.
 2. Run:
    `python upload_recording.py "D:/Videos/Lecture 1.mp4" --title "Polity Lecture 1"`
    (or just `python upload_recording.py` and drag the file in). Add `--link "<address>"` or paste it when asked.
