@@ -1,6 +1,6 @@
 # Recording uploader (move to any computer)
 
-Encodes a lecture video on THIS computer (720/480/360p adaptive HLS + poster) and publishes it to the recordings bucket.
+Encodes a lecture video on THIS computer (720p + 480p adaptive HLS, every piece AES-128 encrypted, + poster) and publishes it to the recordings bucket.
 The computer needs **no passwords and no storage keys**. The only credential is the **upload link** made in the admin.
 
 ## Install everything (one time)
@@ -42,3 +42,9 @@ The admin "Upload recording" page itself uploads one MP4 (single quality). Use t
 - `--encoder auto` uses the PC's graphics chip (NVIDIA / Intel / AMD / Apple). It is not the default: on the test PC it was no faster and made files 3x bigger. A safety check re-encodes on the processor if a graphics chip cuts the qualities at different moments.
 - `--parallel 4` on a weak or shared connection (default 12).
 - ffmpeg is also found in a `ffmpeg*/bin` folder in your home folder (e.g. `C:\Users\<you>\ffmpeg-9.0.2-essentials_build\bin`).
+
+## Encryption (compulsory)
+Every piece is AES-128 encrypted while it is encoded, with a key that belongs to that one recording. The script gets the key from the
+backend with the upload link (`POST /api/v1/cms-video/hls/key`), so this computer needs **no secret or password**. If the backend
+cannot give a key (not redeployed yet, or `HLS_KEY_SECRET` missing there), the script stops before encoding: nothing is ever uploaded
+unencrypted. Uploads go only to the private recordings bucket; the backend refuses the upload if that bucket is not configured.

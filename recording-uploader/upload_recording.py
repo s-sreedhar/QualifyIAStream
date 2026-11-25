@@ -7,8 +7,8 @@
 
 What it does
   1. Asks for the UPLOAD LINK (made in the admin: LMS > Video Library > "Get local upload link"; press Copy).
-  2. Encodes 1080p / 720p / 480p / 360p adaptive HLS (only the sizes the video really has) and a poster picture, with ffmpeg,
-     in ONE pass (the video is read and decoded once for all qualities).
+  2. Encodes 720p and 480p adaptive HLS (only the sizes the video really has) and a poster picture, with ffmpeg, in ONE pass
+     (the video is read and decoded once for both). Every piece is AES-128 encrypted with the recording's key (compulsory).
   3. Uploads every piece the moment it is encoded (12 at a time, reusing connections), straight to the private recordings bucket
      with short-lived signed links, then registers the recording so it appears in the admin as READY.
 
@@ -50,7 +50,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 # name, height, video kbps, audio kbps (same ladder as the website's other recordings)
-LADDER = [("1080p", 1080, 5000, 128), ("720p", 720, 2800, 128), ("480p", 480, 1400, 96), ("360p", 360, 800, 96)]   # 1080p only when the file is 1080p or larger
+LADDER = [("720p", 720, 2800, 128), ("480p", 480, 1400, 96)]   # only these two qualities (a smaller file gets 480p, or its own size)
 SEGMENT_SECONDS = 4
 ENCODE_PRESET = "veryfast"
 NET_ERRORS = (urllib.error.URLError, TimeoutError, ConnectionError, OSError, http.client.HTTPException)
@@ -120,7 +120,7 @@ def probe(path: Path) -> dict:
 
 
 def ladder_for(height: int):
-    chosen = [r for r in LADDER if r[1] <= height + 8]   # never enlarge: a 480p file gets 480p and 360p
+    chosen = [r for r in LADDER if r[1] <= height + 8]   # never enlarge: a 480p file gets only 480p
     return chosen or [("source", max(2, height - height % 2), 600, 64)]
 
 
@@ -149,8 +149,23 @@ def pick_encoder(wanted: str) -> str:
     return "cpu"
 
 
-def encode_all(src: Path, hls_dir: Path, info: dict, ladder, encoder: str, on_progress) -> subprocess.Popen:
-    """Starts ONE ffmpeg that decodes the video once and writes every quality (hls/<name>/seg_00000.ts ...). Returns the process."""
+def write_key_info(work: Path, key_hex: str, uri: str) -> Path:
+    """ffmpeg -hls_key_info_file: line 1 = the key's address written in the playlist (the server replaces it with the signed key link),
+    line 2 = the local key file. No IV line: each piece then uses its sequence number as IV, which is what the player expects.
+    The key file stays in the work folder (deleted with it) and is never uploaded."""
+    key = bytes.fromhex(key_hex)
+    if len(key) != 16:
+        die("The server sent an invalid encryption key.")
+    key_file = work / "aes128.key"
+    key_file.write_bytes(key)
+    info_file = work / "aes128.keyinfo"
+    info_file.write_text(f"{uri}\n{key_file}\n", encoding="utf-8")
+    return info_file
+
+
+def encode_all(src: Path, hls_dir: Path, info: dict, ladder, encoder: str, on_progress, key_info: Path) -> subprocess.Popen:
+    """Starts ONE ffmpeg that decodes the video once and writes every quality (hls/<name>/seg_00000.ts ...). Returns the process.
+    Every piece is AES-128 encrypted with this recording's key, so the pieces are useless to anyone without the key."""
     fps = min(info["fps"], 30.0)
     gop = max(2, round(fps * SEGMENT_SECONDS))
     n = len(ladder)
@@ -166,6 +181,7 @@ def encode_all(src: Path, hls_dir: Path, info: dict, ladder, encoder: str, on_pr
                 "-g", str(gop), "-keyint_min", str(gop), "-force_key_frames", f"expr:gte(t,n_forced*{SEGMENT_SECONDS})",
                 "-c:a", "aac", "-b:a", f"{ak}k", "-ac", "2", "-ar", "48000",
                 "-f", "hls", "-hls_time", str(SEGMENT_SECONDS), "-hls_playlist_type", "vod", "-hls_flags", "independent_segments",
+                "-hls_key_info_file", str(key_info),
                 "-hls_segment_filename", str(out / "seg_%05d.ts"), str(out / "index.m3u8")]
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     proc.err_lines = []  # type: ignore[attr-defined]
@@ -205,7 +221,7 @@ def rendition_ok(folder: Path) -> bool:
         return False
     text = playlist.read_text(errors="ignore")
     names = re.findall(r"^(seg_\d+\.ts)$", text, re.M)
-    return "#EXT-X-ENDLIST" in text and bool(names) and all((folder / n).is_file() and (folder / n).stat().st_size > 0 for n in names)
+    return "#EXT-X-ENDLIST" in text and "#EXT-X-KEY:METHOD=AES-128" in text and bool(names) and all((folder / n).is_file() and (folder / n).stat().st_size > 0 for n in names)
 
 
 def asset_of(token: str) -> str:
@@ -299,6 +315,12 @@ def check_server(api: "Api"):
     if api.call("/hls/renew", {}, soft=True) is None:
         die("The server does not have the multi-quality upload feature yet. The BACKEND must be redeployed in Dokploy "
             "(it was updated on GitHub on 2026-11-23). Then run this again.")
+    key = api.call("/hls/key", {}, soft=True)
+    if key is None:
+        die("The server cannot encrypt recordings yet (added 2026-11-25). The BACKEND must be redeployed in Dokploy, then run this again.")
+    if not key.get("ok") or not key.get("key"):
+        die(f"The server cannot encrypt recordings: {key.get('message')}")
+    return key
 
 
 _conns = threading.local()
@@ -416,13 +438,23 @@ def main():
     link = args.link or input("\nPaste the UPLOAD LINK from the admin (LMS > Video Library > Get local upload link), then press Enter:\n> ")
     base, token = parse_link(link)
     api = Api(base, token)
-    check_server(api)
+    enc = check_server(api)
     api.ping({"progress": 0, "title": title})
 
     # Progress log: one line per uploaded file ("name<TAB>size"), written the moment the file arrives. It belongs to THIS recording
     # (a new link makes a new recording, whose storage folder is empty, so an old log must not be reused for it).
     asset = asset_of(token)
-    log_path = work / f"uploaded-{asset}.log"
+    # Pieces are encrypted with THIS recording's key. An earlier encode of the same file for another recording (another link) used a
+    # different key, so it must not be reused: forget it and encode again.
+    marker = work / "hls" / ".key-for"
+    if marker.exists() and marker.read_text(errors="ignore").strip() != asset:
+        log("The encoded files in the work folder belong to another recording (another upload link); encoding again.")
+        for done_flag in (work / "hls").glob("*/.done"):
+            done_flag.unlink()
+    marker.write_text(asset)
+    key_info = write_key_info(work, enc["key"], enc.get("uri") or "__key__.bin")
+    # "-enc": a log from an older, unencrypted run of this script must never make encrypted pieces look already uploaded.
+    log_path = work / f"uploaded-{asset}-enc.log"
     done: dict[str, int] = {}
     if log_path.exists():
         for line in log_path.read_text(errors="ignore").splitlines():
@@ -515,7 +547,7 @@ def main():
                     api.ping({"progress": min(90, int(frac * 90))})
 
             log(f"Encoding {', '.join(q[0] for q in ladder)} in one pass with {encoder}; pieces upload as soon as they are ready...")
-            proc = encode_all(src, hls_dir, info, ladder, encoder, report)
+            proc = encode_all(src, hls_dir, info, ladder, encoder, report, key_info)
             while proc.poll() is None:
                 time.sleep(2)
                 ready = []
