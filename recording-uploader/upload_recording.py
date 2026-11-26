@@ -377,6 +377,78 @@ def put_file(get_link, path: Path) -> int:
         time.sleep(wait)
 
 
+def _fmt_vtt_ts(seconds: float) -> str:
+    ms_total = max(0, int(round(seconds * 1000)))
+    h = ms_total // 3_600_000
+    m = (ms_total % 3_600_000) // 60_000
+    s = (ms_total % 60_000) // 1000
+    ms = ms_total % 1000
+    return f"{h:02d}:{m:02d}:{s:02d}.{ms:03d}"
+
+
+def build_captions_vtt(src: Path, work: Path, args) -> tuple[str, str] | None:
+    """Load explicit --captions file or generate WebVTT locally using faster-whisper if installed."""
+    if args.captions:
+        cap_path = Path(args.captions).expanduser().resolve()
+        if not cap_path.is_file():
+            die(f"Captions file not found: {cap_path}")
+        return cap_path.read_text(encoding="utf-8", errors="replace"), (args.caption_lang or "auto")
+
+    if args.no_captions:
+        return None
+
+    try:
+        from faster_whisper import WhisperModel  # type: ignore
+    except ImportError:
+        log("Auto-captions skipped (install 'pip install faster-whisper' on this PC to auto-generate subtitles during upload).")
+        return None
+
+    wav = work / "captions_audio.wav"
+    log(f"Extracting audio for auto-captions (model={args.caption_model}, lang={args.caption_lang})...")
+    ext = subprocess.run(
+        ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", str(src), "-vn", "-ac", "1", "-ar", "16000", "-f", "wav", str(wav)],
+        capture_output=True, text=True,
+    )
+    if ext.returncode != 0 or not wav.is_file():
+        log("Auto-captions skipped: could not extract audio track.")
+        return None
+
+    try:
+        model = WhisperModel(args.caption_model, device="auto", compute_type="int8")
+        lang = None if str(args.caption_lang).lower() == "auto" else args.caption_lang
+        segments, info = model.transcribe(
+            str(wav),
+            language=lang,
+            vad_filter=True,
+            vad_parameters={"min_silence_duration_ms": 350},
+            initial_prompt="Indian UPSC civil services lecture in English, Hinglish, and Indian terminology.",
+        )
+        lines = ["WEBVTT", ""]
+        count = 0
+        for seg in segments:
+            text = re.sub(r"\s+", " ", (seg.text or "")).strip()
+            if not text:
+                continue
+            lines.append(f"{_fmt_vtt_ts(seg.start)} --> {_fmt_vtt_ts(seg.end)}")
+            lines.append(text)
+            lines.append("")
+            count += 1
+        if count == 0:
+            log("Auto-captions: no speech detected.")
+            return None
+        detected_lang = getattr(info, "language", None) or args.caption_lang or "auto"
+        log(f"Generated {count} subtitle cues ({detected_lang}).")
+        return "\n".join(lines), str(detected_lang)
+    except Exception as e:
+        log(f"Auto-captions skipped ({e}); continuing video publish.")
+        return None
+    finally:
+        try:
+            wav.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
 # ----------------------------------------------------------------------------------------------------- main
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -389,6 +461,10 @@ def main():
     ap.add_argument("--check", action="store_true", help="check ffmpeg and (with --link) the link, then stop")
     ap.add_argument("--encoder", default="cpu", help="cpu (default: smallest upload), auto (graphics chip), nvenc, qsv, amf or videotoolbox")
     ap.add_argument("--parallel", type=int, default=UPLOAD_THREADS, help=f"uploads at the same time (default {UPLOAD_THREADS})")
+    ap.add_argument("--captions", help="optional .srt or .vtt subtitle file to attach to this recording")
+    ap.add_argument("--no-captions", action="store_true", help="skip automatic faster-whisper subtitle generation")
+    ap.add_argument("--caption-model", default="small", help="faster-whisper model for auto-captions (tiny, base, small, medium; default: small)")
+    ap.add_argument("--caption-lang", default="en", help="language hint for faster-whisper (en, hi, te, ta, or auto; default: en)")
     args = ap.parse_args()
 
     find_ffmpeg()
@@ -597,6 +673,15 @@ def main():
     secs = max(1, time.time() - started_at)
     log(f"Uploaded {stats['sent'] / 1048576:.0f} MB in {int(secs // 60)} min {int(secs % 60)} s "
         f"({stats['sent'] * 8 / secs / 1_000_000:.1f} Mbit/s average while encoding and uploading).")
+
+    cap_result = build_captions_vtt(src, work, args)
+    if cap_result:
+        vtt_text, cap_lang = cap_result
+        cap_res = api.call("/hls/captions", {"captions": vtt_text, "lang": cap_lang})
+        if cap_res.get("ok"):
+            log(f"Subtitles saved ({cap_res.get('count', 0)} cues).")
+        else:
+            log(f"Subtitle upload warning: {cap_res.get('message', 'skipped')}")
 
     res = api.call("/hls/finish", {
         "durationSeconds": int(info["duration"]), "sizeBytes": size, "hasThumbnail": thumb.exists(),
